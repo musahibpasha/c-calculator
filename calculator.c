@@ -11,10 +11,10 @@
 extern HWND hWnd;
 
 #define WINDOW_WIDTH 600
-#define WINDOW_HEIGHT 700
-#define BUTTON_WIDTH 70
-#define BUTTON_HEIGHT 60
-#define DISPLAY_HEIGHT 80
+#define WINDOW_HEIGHT 750
+#define BUTTON_WIDTH 85
+#define BUTTON_HEIGHT 65
+#define DISPLAY_HEIGHT 100
 
 typedef struct {
     int x, y, width, height;
@@ -28,6 +28,8 @@ double result = 0;
 int new_number = 1;
 char operation = '\0';
 int decimal_flag = 0;
+char preview[100] = ""; /* shows ongoing operation e.g. "7 + 7" or "7 + 7 = 14" */
+int preview_locked = 0; /* when set, don't recompute preview (used after '=' to show result) */
 
 Button buttons[20];
 int button_count = 0;
@@ -43,27 +45,61 @@ void addButton(int x, int y, const char *label, int color) {
 }
 
 void drawButton(Button *btn) {
+    /* Draw button shadow for depth */
+    setfillstyle(SOLID_FILL, DARKGRAY);
+    bar(btn->x + 2, btn->y + 2, btn->x + btn->width + 2, btn->y + btn->height + 2);
+    
+    /* Draw main button with darker background */
     setfillstyle(SOLID_FILL, btn->color);
     bar(btn->x, btn->y, btn->x + btn->width, btn->y + btn->height);
+    
+    /* Draw button border */
     setcolor(BLACK);
     rectangle(btn->x, btn->y, btn->x + btn->width, btn->y + btn->height);
+    rectangle(btn->x + 1, btn->y + 1, btn->x + btn->width - 1, btn->y + btn->height - 1);
     
-    int text_x = btn->x + btn->width / 2 - 10;
-    int text_y = btn->y + btn->height / 2 - 5;
+    /* Draw button text - larger and darker for better visibility */
+    settextstyle(DEFAULT_FONT, HORIZ_DIR, 4);
+    setcolor(DARKGRAY);
+    int text_x = btn->x + btn->width / 2 - 20;
+    int text_y = btn->y + btn->height / 2 - 12;
     moveto(text_x, text_y);
     outtext(btn->label);
 }
 
 void drawDisplay() {
-    setfillstyle(SOLID_FILL, BLACK);
-    bar(20, 20, WINDOW_WIDTH - 20, 20 + DISPLAY_HEIGHT);
-    setcolor(YELLOW);
-    rectangle(20, 20, WINDOW_WIDTH - 20, 20 + DISPLAY_HEIGHT);
+    /* Draw display background - dark gray for better contrast */
+    setfillstyle(SOLID_FILL, DARKGRAY);
+    bar(20, 60, WINDOW_WIDTH - 20, 60 + DISPLAY_HEIGHT);
     
-    settextstyle(DEFAULT_FONT, HORIZ_DIR, 2);
-    setcolor(WHITE);
+    /* Draw attractive border with darker green */
+    setcolor(LIGHTGREEN);
+    rectangle(20, 60, WINDOW_WIDTH - 20, 60 + DISPLAY_HEIGHT);
+    
+    /* Draw inner border for depth */
+    setcolor(LIGHTCYAN);
+    rectangle(25, 65, WINDOW_WIDTH - 25, 55 + DISPLAY_HEIGHT);
+
+    /* Update preview unless explicitly locked (e.g., after '=' to show final result) */
+    if (!preview_locked) {
+        updatePreview();
+    }
+
+    /* Draw preview text (smaller) above the main display text */
+    if (strlen(preview) > 0) {
+        settextstyle(DEFAULT_FONT, HORIZ_DIR, 2);
+        setcolor(LIGHTCYAN);
+        int preview_x = 40;
+        int preview_y = 72; /* slightly above main text */
+        moveto(preview_x, preview_y);
+        outtext(preview);
+    }
+    
+    /* Draw large, dark text for maximum visibility */
+    settextstyle(DEFAULT_FONT, HORIZ_DIR, 4);
+    setcolor(BLACK);
     int text_x = 40;
-    int text_y = 45;
+    int text_y = 85;
     moveto(text_x, text_y);
     outtext(display);
 }
@@ -71,55 +107,58 @@ void drawDisplay() {
 void initializeButtons() {
     button_count = 0;
     
-    int start_y = 130;
+    int start_y = 180;
     int start_x = 20;
+    int spacing = 8;
     
-    // Create buttons layout
+    // Create buttons layout with better spacing
     // Row 1: 7, 8, 9, /
     addButton(start_x, start_y, "7", LIGHTBLUE);
-    addButton(start_x + 100, start_y, "8", LIGHTBLUE);
-    addButton(start_x + 200, start_y, "9", LIGHTBLUE);
-    addButton(start_x + 300, start_y, "/", LIGHTRED);
+    addButton(start_x + BUTTON_WIDTH + spacing, start_y, "8", LIGHTBLUE);
+    addButton(start_x + 2 * (BUTTON_WIDTH + spacing), start_y, "9", LIGHTBLUE);
+    addButton(start_x + 3 * (BUTTON_WIDTH + spacing), start_y, "/", LIGHTBLUE);
     
     // Row 2: 4, 5, 6, *
-    start_y += 80;
+    start_y += BUTTON_HEIGHT + spacing;
     addButton(start_x, start_y, "4", LIGHTBLUE);
-    addButton(start_x + 100, start_y, "5", LIGHTBLUE);
-    addButton(start_x + 200, start_y, "6", LIGHTBLUE);
-    addButton(start_x + 300, start_y, "*", LIGHTRED);
+    addButton(start_x + BUTTON_WIDTH + spacing, start_y, "5", LIGHTBLUE);
+    addButton(start_x + 2 * (BUTTON_WIDTH + spacing), start_y, "6", LIGHTBLUE);
+    addButton(start_x + 3 * (BUTTON_WIDTH + spacing), start_y, "*", LIGHTBLUE);
     
     // Row 3: 1, 2, 3, -
-    start_y += 80;
+    start_y += BUTTON_HEIGHT + spacing;
     addButton(start_x, start_y, "1", LIGHTBLUE);
-    addButton(start_x + 100, start_y, "2", LIGHTBLUE);
-    addButton(start_x + 200, start_y, "3", LIGHTBLUE);
-    addButton(start_x + 300, start_y, "-", LIGHTRED);
+    addButton(start_x + BUTTON_WIDTH + spacing, start_y, "2", LIGHTBLUE);
+    addButton(start_x + 2 * (BUTTON_WIDTH + spacing), start_y, "3", LIGHTBLUE);
+    addButton(start_x + 3 * (BUTTON_WIDTH + spacing), start_y, "-", LIGHTBLUE);
     
     // Row 4: 0, ., =, +
-    start_y += 80;
-    addButton(start_x, start_y, "0", LIGHTBLUE);
-    addButton(start_x + 100, start_y, ".", LIGHTBLUE);
-    addButton(start_x + 200, start_y, "=", LIGHTGREEN);
-    addButton(start_x + 300, start_y, "+", LIGHTRED);
+    start_y += BUTTON_HEIGHT + spacing;
+    addButton(start_x, start_y, "0", LIGHTCYAN);
+    addButton(start_x + BUTTON_WIDTH + spacing, start_y, ".", LIGHTCYAN);
+    addButton(start_x + 2 * (BUTTON_WIDTH + spacing), start_y, "=", LIGHTGREEN);
+    addButton(start_x + 3 * (BUTTON_WIDTH + spacing), start_y, "+", LIGHTMAGENTA);
     
-    // Row 5: Clear
-    start_y += 80;
+    // Row 5: Clear and Delete
+    start_y += BUTTON_HEIGHT + spacing;
     addButton(start_x, start_y, "C", LIGHTRED);
-    addButton(start_x + 100, start_y, "Del", YELLOW);
+    addButton(start_x + BUTTON_WIDTH + spacing, start_y, "Del", YELLOW);
 }
 
 void drawCalculator() {
     cleardevice();
-    setbkcolor(DARKGRAY);
+    /* Use dark blue background for better contrast */
+    setbkcolor(BLUE);
     
-    setcolor(WHITE);
-    settextstyle(DEFAULT_FONT, HORIZ_DIR, 3);
-    moveto(150, 130);
+    /* Draw title with attractive style */
+    setcolor(LIGHTGREEN);
+    settextstyle(DEFAULT_FONT, HORIZ_DIR, 4);
+    moveto(110, 15);
     outtext("CALCULATOR");
     
     drawDisplay();
     
-    // Draw all buttons
+    /* Draw all buttons */
     for (int i = 0; i < button_count; i++) {
         drawButton(&buttons[i]);
     }
@@ -135,7 +174,25 @@ void updateDisplay() {
     if (strlen(display) == 0) {
         strcpy(display, "0");
     }
+    preview_locked = 0; /* any manual display update should unlock preview */
     drawDisplay();
+}
+
+/* Build a preview string describing the current operation/inputs */
+void updatePreview() {
+    if (operation != '\0') {
+        if (strlen(input) > 0) {
+            snprintf(preview, sizeof(preview), "%g %c %s", result, operation, input);
+        } else {
+            snprintf(preview, sizeof(preview), "%g %c", result, operation);
+        }
+    } else {
+        if (strlen(input) > 0) {
+            snprintf(preview, sizeof(preview), "%s", input);
+        } else {
+            preview[0] = '\0';
+        }
+    }
 }
 
 void performCalculation(char op) {
@@ -183,6 +240,8 @@ void handleButtonClick(const char *label) {
         operation = '\0';
         decimal_flag = 0;
         new_number = 1;
+        preview[0] = '\0';
+        preview_locked = 0;
     } else if (strcmp(label, "Del") == 0) {
         /* Delete last character from input */
         if (strlen(input) > 0) {
@@ -199,7 +258,16 @@ void handleButtonClick(const char *label) {
     } else if (strcmp(label, "=") == 0) {
         /* Execute calculation */
         if (operation != '\0' && strlen(input) > 0) {
+            /* capture operands for preview before calculation changes state */
+            double left_val = result;
+            char op_char = operation;
+            double right_val = atof(input);
+
             performCalculation('\0');
+
+            /* show a locked preview like "7 + 7 = 14" until next input */
+            snprintf(preview, sizeof(preview), "%g %c %g = %g", left_val, op_char, right_val, result);
+            preview_locked = 1;
             /* Display the result */
             sprintf(display, "%.2f", result);
             int len = strlen(display);
@@ -231,9 +299,11 @@ void handleButtonClick(const char *label) {
                 display[len - 1] = '\0';
             }
             new_number = 1;
+            preview_locked = 0; /* allow preview to update showing "result op" */
         } else if (operation == '\0' && result != 0) {
             /* Just change the operation */
             operation = label[0];
+            preview_locked = 0;
         }
     } else if (strcmp(label, ".") == 0) {
         /* Decimal point */
